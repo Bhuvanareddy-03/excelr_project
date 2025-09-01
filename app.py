@@ -178,4 +178,4 @@ if uploaded_file:
         st.pyplot(fig3)
 
     # Cluster Summary
-    st.subheader("📋 Cluster Summary
+    st.subheader("📋 Cluster Summary ")
