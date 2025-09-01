@@ -94,6 +94,15 @@ if uploaded_file:
     scaler = StandardScaler()
     scaled = scaler.fit_transform(numeric_data)
 
+    # Final check before clustering
+    scaled_df = pd.DataFrame(scaled)
+    scaled_df.replace([np.inf, -np.inf], np.nan, inplace=True)
+    if scaled_df.isnull().sum().sum() > 0:
+        st.error("❌ Clustering cannot proceed. Missing or infinite values detected in scaled data.")
+        st.write("🔍 Columns with NaNs:", scaled_df.columns[scaled_df.isnull().any()].tolist())
+        st.stop()
+    scaled = scaled_df.values
+
     # Sidebar clustering settings
     st.sidebar.header("🔧 Clustering Settings")
     cluster_method = st.sidebar.selectbox("Choose clustering method", ["K-Means", "Hierarchical", "DBSCAN"])
