@@ -72,7 +72,7 @@ if uploaded_file:
     Q3 = data_for_outlier.quantile(0.75)
     IQR = Q3 - Q1
     mask = ~((data_for_outlier < (Q1 - 1.5 * IQR)) | (data_for_outlier > (Q3 + 1.5 * IQR))).any(axis=1)
-    data_cleaned = data.loc[mask].copy()
+    data_cleaned = pd.concat([data.loc[mask, key_cols], data_for_outlier.loc[mask]], axis=1)
 
     # Re-impute zeros in key indicators with smart fallbacks
     st.subheader("🔄 Re-imputing zeros in key indicators")
@@ -86,10 +86,12 @@ if uploaded_file:
     for col in key_cols:
         if col in data_cleaned.columns:
             data_cleaned[col] = data_cleaned[col].replace(0, np.nan)
-            median_val = data_cleaned[col].median()
-            if pd.isna(median_val):
+            non_zero = data_cleaned[col].dropna()
+            if len(non_zero) > 0:
+                median_val = non_zero.median()
+            else:
                 median_val = fallbacks.get(col, 0)
-                st.warning(f"⚠️ Median for '{col}' is NaN. Using fallback value: {median_val}")
+                st.warning(f"⚠️ No valid data in '{col}'. Using fallback: {median_val}")
             data_cleaned[col] = data_cleaned[col].fillna(median_val)
             st.write(f"Filled NaNs in '{col}' with: {median_val}")
 
@@ -178,4 +180,3 @@ if uploaded_file:
         st.pyplot(fig3)
 
     # Cluster Summary
-    st.subheader("📋 Cluster Summary ")
