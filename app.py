@@ -88,6 +88,9 @@ if uploaded_file:
     for col in numeric_data.columns:
         if numeric_data[col].isnull().sum() > 0:
             median_val = numeric_data[col].median()
+            if pd.isna(median_val):
+                st.warning(f"⚠️ Column '{col}' has no valid values. Filling with 0.")
+                median_val = 0
             numeric_data[col] = numeric_data[col].fillna(median_val)
 
     # Standardize features
