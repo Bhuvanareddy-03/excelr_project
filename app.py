@@ -72,16 +72,22 @@ if uploaded_file:
 
     # Re-impute zeros in key economic indicators
     st.subheader("🔄 Re-imputing zeros in key indicators")
-    for col in ['GDP', 'Health Exp/Capita', 'Tourism Inbound', 'Tourism Outbound']:
+    key_cols = ['GDP', 'Health Exp/Capita', 'Tourism Inbound', 'Tourism Outbound']
+    for col in key_cols:
         if col in data_cleaned.columns:
-            non_zero = data_cleaned[col][data_cleaned[col] != 0]
+            data_cleaned[col] = data_cleaned[col].replace(0, np.nan)
+            non_zero = data_cleaned[col].dropna()
             if len(non_zero) > 0:
                 if abs(non_zero.skew()) < 1:
-                    data_cleaned[col] = data_cleaned[col].replace(0, np.nan).fillna(non_zero.mean())
+                    data_cleaned[col] = data_cleaned[col].fillna(non_zero.mean())
                     st.write(f"Replaced zeros in '{col}' with mean.")
                 else:
-                    data_cleaned[col] = data_cleaned[col].replace(0, np.nan).fillna(non_zero.median())
+                    data_cleaned[col] = data_cleaned[col].fillna(non_zero.median())
                     st.write(f"Replaced zeros in '{col}' with median.")
+
+    # Diagnostic check
+    st.subheader("🔍 Post-Imputation Check")
+    st.dataframe(data_cleaned[key_cols].describe())
 
     # Standardize and apply PCA
     scaler = StandardScaler()
@@ -146,7 +152,7 @@ if uploaded_file:
 
     # Cluster Summary
     st.subheader("📋 Cluster Summary")
-    st.dataframe(data_cleaned.groupby('Cluster').mean(numeric_only=True))
+    st.dataframe(data_cleaned.groupby('Cluster')[key_cols].mean())
 
     # Clustered Countries
     st.subheader("🌍 Countries by Cluster")
