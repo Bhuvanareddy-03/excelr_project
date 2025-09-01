@@ -24,9 +24,11 @@ if uploaded_file:
     st.subheader("📊 Raw Data Preview")
     st.dataframe(data.head())
 
+    # Preserve country names
+    country_names = data['Country']
+
     # Encode country
     data['Country_encoded'] = LabelEncoder().fit_transform(data['Country'])
-    country_names = data['Country']
     data.drop(['Country'], axis=1, inplace=True)
 
     # Clean currency and percentage columns
@@ -48,19 +50,14 @@ if uploaded_file:
     st.subheader("🧹 Handling Missing Values")
     for col in data.columns:
         if data[col].isnull().sum() > 0:
-            if data[col].dtype in ['float64', 'int64']:
-                skew = data[col].skew()
-                if abs(skew) < 1:
-                    data[col] = data[col].fillna(data[col].mean())
-                    st.write(f"Filled missing values in '{col}' with mean.")
-                else:
-                    data[col] = data[col].fillna(data[col].median())
-                    st.write(f"Filled missing values in '{col}' with median.")
+            skew = data[col].skew()
+            if abs(skew) < 1:
+                data[col] = data[col].fillna(data[col].mean())
+                st.write(f"Filled missing values in '{col}' with mean.")
             else:
-                data[col] = data[col].fillna("Unknown")
-                st.write(f"Filled missing values in '{col}' with placeholder.")
+                data[col] = data[col].fillna(data[col].median())
+                st.write(f"Filled missing values in '{col}' with median.")
 
-    # Final sweep to ensure no NaNs remain
     data.replace([np.inf, -np.inf], np.nan, inplace=True)
     data.fillna(0, inplace=True)
     st.write(f"✅ Remaining missing values: {data.isnull().sum().sum()}")
@@ -72,7 +69,11 @@ if uploaded_file:
     Q3 = data_for_outlier.quantile(0.75)
     IQR = Q3 - Q1
     mask = ~((data_for_outlier < (Q1 - 1.5 * IQR)) | (data_for_outlier > (Q3 + 1.5 * IQR))).any(axis=1)
-    data_cleaned = pd.concat([data.loc[mask, key_cols], data_for_outlier.loc[mask]], axis=1)
+
+    # Apply mask to full dataset and country names
+    data_cleaned = data.loc[mask].copy()
+    country_cleaned = country_names.loc[mask].reset_index(drop=True)
+    data_cleaned.reset_index(drop=True, inplace=True)
 
     # Re-impute zeros in key indicators with smart fallbacks
     st.subheader("🔄 Re-imputing zeros in key indicators")
@@ -141,9 +142,9 @@ if uploaded_file:
         model = DBSCAN(eps=eps, min_samples=min_samples)
         labels = model.fit_predict(data_pca_15)
 
-    # Add cluster labels
+    # Add cluster labels and country names
     data_cleaned['Cluster'] = labels
-    data_cleaned['Country'] = country_names.loc[data_cleaned.index]
+    data_cleaned['Country'] = country_cleaned
 
     # Silhouette Score
     if len(set(labels)) > 1:
@@ -175,17 +176,3 @@ if uploaded_file:
     # Dendrogram (only for Hierarchical)
     if cluster_method == "Hierarchical":
         st.subheader("🌲 Dendrogram")
-        fig3, ax3 = plt.subplots(figsize=(10, 5))
-        sch.dendrogram(sch.linkage(data_pca_15, method='ward'), ax=ax3)
-        st.pyplot(fig3)
-
-    # 📋 Cluster Summary
-st.subheader("📋 Cluster Summary")
-summary = data_cleaned.groupby('Cluster')[key_cols].mean().round(2)
-st.dataframe(summary)
-
-# 🌍 Countries by Cluster
-st.subheader("🌍 Countries by Cluster")
-st.dataframe(data_cleaned[['Country', 'Cluster']].sort_values(by='Cluster'))
-
- 
