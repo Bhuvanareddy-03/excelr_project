@@ -179,4 +179,13 @@ if uploaded_file:
         sch.dendrogram(sch.linkage(data_pca_15, method='ward'), ax=ax3)
         st.pyplot(fig3)
 
-    # Cluster Summary
+    # 📋 Cluster Summary
+st.subheader("📋 Cluster Summary")
+summary = data_cleaned.groupby('Cluster')[key_cols].mean().round(2)
+st.dataframe(summary)
+
+# 🌍 Countries by Cluster
+st.subheader("🌍 Countries by Cluster")
+st.dataframe(data_cleaned[['Country', 'Cluster']].sort_values(by='Cluster'))
+
+ 
