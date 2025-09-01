@@ -15,7 +15,6 @@ st.title("🌍 Country Clustering Based on Development Indicators")
 
 uploaded_file = st.file_uploader("Upload your Excel dataset", type=["xlsx"])
 if uploaded_file:
-    # Load and preserve original country names
     data_org = pd.read_excel(uploaded_file)
     data = data_org.copy()
     country_names = data_org['Country']
@@ -56,10 +55,12 @@ if uploaded_file:
     # Outlier removal (preserve key indicators)
     key_cols = ['GDP', 'Health Exp/Capita', 'Tourism Inbound', 'Tourism Outbound']
     data_for_outlier = data.drop(columns=key_cols)
+    data_for_outlier = data_for_outlier.select_dtypes(include=[np.number])
+
     Q1 = data_for_outlier.quantile(0.25)
     Q3 = data_for_outlier.quantile(0.75)
     IQR = Q3 - Q1
-    mask = ~((data_for_outlier < (Q1 - 3.0 * IQR)) | (data_for_outlier > (Q3 + 3.0 * IQR))).any(axis=1)
+    mask = ~((data_for_outlier < (Q1 - 1.5 * IQR)) | (data_for_outlier > (Q3 + 1.5 * IQR))).any(axis=1)
 
     data_cleaned = data.loc[mask].copy()
     country_cleaned = country_names.loc[mask].reset_index(drop=True)
