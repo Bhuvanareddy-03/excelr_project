@@ -44,7 +44,7 @@ if uploaded_file:
     if 'Number of Records' in data.columns:
         data.drop(['Number of Records'], axis=1, inplace=True)
 
-    # Impute missing values with mean or median
+    # Impute missing values using mean or median based on skewness
     st.subheader("🧹 Handling Missing Values")
     for col in data.columns:
         if data[col].isnull().sum() > 0:
@@ -60,15 +60,25 @@ if uploaded_file:
                 data[col] = data[col].fillna("Unknown")
                 st.write(f"Filled missing values in '{col}' with placeholder.")
 
-    # Final sweep
+    # Final sweep to ensure no NaNs remain
     data.fillna(0, inplace=True)
     st.write(f"✅ Remaining missing values: {data.isnull().sum().sum()}")
 
-    # Outlier removal
+    # Outlier removal using IQR
     Q1 = data.quantile(0.25)
     Q3 = data.quantile(0.75)
     IQR = Q3 - Q1
     data_cleaned = data[~((data < (Q1 - 1.5 * IQR)) | (data > (Q3 + 1.5 * IQR))).any(axis=1)]
+
+    # Re-impute zeros in key economic indicators
+    for col in ['GDP', 'Health Exp/Capita', 'Tourism Inbound', 'Tourism Outbound']:
+        if col in data_cleaned.columns:
+            non_zero = data_cleaned[col][data_cleaned[col] != 0]
+            if len(non_zero) > 0:
+                if abs(non_zero.skew()) < 1:
+                    data_cleaned[col] = data_cleaned[col].replace(0, np.nan).fillna(non_zero.mean())
+                else:
+                    data_cleaned[col] = data_cleaned[col].replace(0, np.nan).fillna(non_zero.median())
 
     # Standardize and apply PCA
     scaler = StandardScaler()
