@@ -1,5 +1,3 @@
-# streamlit_app.py
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -15,17 +13,14 @@ import scipy.cluster.hierarchy as sch
 st.set_page_config(page_title="Country Clustering App", layout="wide")
 st.title("🌍 Country Clustering Based on Development Indicators")
 
-# Upload dataset
 uploaded_file = st.file_uploader("Upload your Excel dataset", type=["xlsx"])
 if uploaded_file:
     data_org = pd.read_excel(uploaded_file)
     data = data_org.copy()
+    country_names = data['Country']
 
     st.subheader("📊 Raw Data Preview")
     st.dataframe(data.head())
-
-    # Preserve country names
-    country_names = data['Country']
 
     # Encode country
     data['Country_encoded'] = LabelEncoder().fit_transform(data['Country'])
@@ -46,7 +41,7 @@ if uploaded_file:
     if 'Number of Records' in data.columns:
         data.drop(['Number of Records'], axis=1, inplace=True)
 
-    # Impute missing values using mean or median based on skewness
+    # Impute missing values
     st.subheader("🧹 Handling Missing Values")
     for col in data.columns:
         if data[col].isnull().sum() > 0:
@@ -62,7 +57,7 @@ if uploaded_file:
     data.fillna(0, inplace=True)
     st.write(f"✅ Remaining missing values: {data.isnull().sum().sum()}")
 
-    # Preserve key indicators during outlier removal
+    # Outlier removal (preserve key indicators)
     key_cols = ['GDP', 'Health Exp/Capita', 'Tourism Inbound', 'Tourism Outbound']
     data_for_outlier = data.drop(columns=key_cols)
     Q1 = data_for_outlier.quantile(0.25)
@@ -70,20 +65,13 @@ if uploaded_file:
     IQR = Q3 - Q1
     mask = ~((data_for_outlier < (Q1 - 1.5 * IQR)) | (data_for_outlier > (Q3 + 1.5 * IQR))).any(axis=1)
 
-    # Apply mask to full dataset and country names
     data_cleaned = data.loc[mask].copy()
     country_cleaned = country_names.loc[mask].reset_index(drop=True)
     data_cleaned.reset_index(drop=True, inplace=True)
 
-    # Re-impute zeros in key indicators with smart fallbacks
+    # Re-impute zeros in key indicators
     st.subheader("🔄 Re-imputing zeros in key indicators")
-    fallbacks = {
-        'GDP': 1000,
-        'Health Exp/Capita': 50,
-        'Tourism Inbound': 100,
-        'Tourism Outbound': 100
-    }
-
+    fallbacks = {'GDP': 1000, 'Health Exp/Capita': 50, 'Tourism Inbound': 100, 'Tourism Outbound': 100}
     for col in key_cols:
         if col in data_cleaned.columns:
             data_cleaned[col] = data_cleaned[col].replace(0, np.nan)
@@ -100,7 +88,6 @@ if uploaded_file:
     st.subheader("🧼 Final Cleanup Before PCA")
     data_cleaned_numeric = data_cleaned.select_dtypes(include=[np.number])
     data_cleaned_numeric.replace([np.inf, -np.inf], np.nan, inplace=True)
-
     for col in data_cleaned_numeric.columns:
         if data_cleaned_numeric[col].isnull().sum() > 0:
             median_val = data_cleaned_numeric[col].median()
@@ -112,26 +99,25 @@ if uploaded_file:
 
     total_missing = data_cleaned_numeric.isnull().sum().sum()
     st.write("✅ Remaining missing values before PCA:", total_missing)
-
     if total_missing > 0:
         st.error("❌ PCA cannot proceed. Missing values still present.")
         st.stop()
 
-    # Standardize and apply PCA
+    # PCA
     scaler = StandardScaler()
     scaled = scaler.fit_transform(data_cleaned_numeric)
     pca = PCA()
     data_pca = pca.fit_transform(scaled)
     data_pca_15 = data_pca[:, :15]
 
-    # Sidebar options
+    # Sidebar clustering settings
     st.sidebar.header("🔧 Clustering Settings")
     cluster_method = st.sidebar.selectbox("Choose clustering method", ["K-Means", "Hierarchical", "DBSCAN"])
     n_clusters = st.sidebar.slider("Number of clusters", 2, 10, 3)
     eps = st.sidebar.slider("DBSCAN eps", 0.1, 1.0, 0.5)
     min_samples = st.sidebar.slider("DBSCAN min_samples", 3, 10, 5)
 
-    # Apply clustering
+    # Clustering
     if cluster_method == "K-Means":
         model = KMeans(n_clusters=n_clusters, random_state=42)
         labels = model.fit_predict(data_pca_15)
@@ -142,7 +128,6 @@ if uploaded_file:
         model = DBSCAN(eps=eps, min_samples=min_samples)
         labels = model.fit_predict(data_pca_15)
 
-    # Add cluster labels and country names
     data_cleaned['Cluster'] = labels
     data_cleaned['Country'] = country_cleaned
 
@@ -173,6 +158,19 @@ if uploaded_file:
     ax2.set_title("Clusters in t-SNE Space")
     st.pyplot(fig2)
 
-    # Dendrogram (only for Hierarchical)
+    # Dendrogram
     if cluster_method == "Hierarchical":
         st.subheader("🌲 Dendrogram")
+        fig3, ax3 = plt.subplots(figsize=(10, 5))
+        sch.dendrogram(sch.linkage(data_pca_15, method='ward'), ax=ax3)
+        st.pyplot(fig3)
+
+    # Cluster Summary
+    st.subheader("📋 Cluster Summary")
+    summary = data_cleaned.groupby('Cluster')[key_cols].mean().round(2)
+    st.dataframe(summary)
+
+    # Countries by Cluster
+    st.subheader("🌍 Countries by Cluster")
+    country_cluster_df = data_cleaned[['Country', 'Cluster']].sort_values(by='Cluster')
+    st.dataframe(country_cluster_df)
