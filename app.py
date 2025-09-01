@@ -66,8 +66,10 @@ if uploaded_file:
     mask = ~((data_for_outlier < (Q1 - 1.5 * IQR)) | (data_for_outlier > (Q3 + 1.5 * IQR))).any(axis=1)
 
     data_cleaned = data.loc[mask].copy()
-    country_cleaned = country_names.loc[mask].reset_index(drop=True)
+    country_cleaned = country_names.loc[mask].copy()
     data_cleaned.reset_index(drop=True, inplace=True)
+    country_cleaned.reset_index(drop=True, inplace=True)
+    data_cleaned['Country'] = country_cleaned
 
     # Re-impute zeros in key indicators
     st.subheader("🔄 Re-imputing zeros in key indicators")
@@ -129,7 +131,6 @@ if uploaded_file:
         labels = model.fit_predict(data_pca_15)
 
     data_cleaned['Cluster'] = labels
-    data_cleaned['Country'] = country_cleaned
 
     # Silhouette Score
     if len(set(labels)) > 1:
