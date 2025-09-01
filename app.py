@@ -88,13 +88,17 @@ if uploaded_file:
 
     # Final cleanup before PCA
     st.subheader("🧼 Final Cleanup Before PCA")
-    data_cleaned.replace([np.inf, -np.inf], np.nan, inplace=True)
-    data_cleaned.fillna(0, inplace=True)
-    st.write("Remaining missing values before PCA:", data_cleaned.isnull().sum().sum())
+    data_cleaned_numeric = data_cleaned.select_dtypes(include=[np.number])
+    data_cleaned_numeric.replace([np.inf, -np.inf], np.nan, inplace=True)
+    for col in data_cleaned_numeric.columns:
+        if data_cleaned_numeric[col].isnull().sum() > 0:
+            data_cleaned_numeric[col] = data_cleaned_numeric[col].fillna(data_cleaned_numeric[col].median())
+            st.write(f"Filled remaining NaNs in '{col}' with median.")
+    st.write("✅ Remaining missing values before PCA:", data_cleaned_numeric.isnull().sum().sum())
 
     # Standardize and apply PCA
     scaler = StandardScaler()
-    scaled = scaler.fit_transform(data_cleaned)
+    scaled = scaler.fit_transform(data_cleaned_numeric)
     pca = PCA()
     data_pca = pca.fit_transform(scaled)
     data_pca_15 = data_pca[:, :15]
@@ -140,7 +144,9 @@ if uploaded_file:
     # t-SNE Visualization
     st.subheader("🌐 t-SNE Cluster Visualization")
     tsne = TSNE(random_state=42)
-    data_tsne = tsne.fit_transform(data_cleaned.drop(columns=['Cluster', 'Country']))
+    tsne_input = data_cleaned_numeric.copy()
+    tsne_input.drop(columns=['Cluster'], errors='ignore', inplace=True)
+    data_tsne = tsne.fit_transform(tsne_input)
     fig2, ax2 = plt.subplots()
     sns.scatterplot(x=data_tsne[:, 0], y=data_tsne[:, 1], hue=labels, palette='Set1', s=100, ax=ax2)
     ax2.set_title("Clusters in t-SNE Space")
@@ -160,3 +166,4 @@ if uploaded_file:
     # Clustered Countries
     st.subheader("🌍 Countries by Cluster")
     st.dataframe(data_cleaned[['Country', 'Cluster']].sort_values(by='Cluster'))
+
