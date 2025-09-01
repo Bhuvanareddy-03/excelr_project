@@ -4,7 +4,6 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
 from sklearn.metrics import silhouette_score
 from sklearn.manifold import TSNE
@@ -15,6 +14,7 @@ st.title("🌍 Country Clustering Based on Development Indicators")
 
 uploaded_file = st.file_uploader("Upload your Excel dataset", type=["xlsx"])
 if uploaded_file:
+    # Load and preserve original country names
     data_org = pd.read_excel(uploaded_file)
     data = data_org.copy()
     country_names = data_org['Country']
@@ -52,7 +52,7 @@ if uploaded_file:
     data.replace([np.inf, -np.inf], np.nan, inplace=True)
     data.fillna(0, inplace=True)
 
-    # Outlier removal (preserve key indicators)
+    # Outlier removal (exclude key indicators)
     key_cols = ['GDP', 'Health Exp/Capita', 'Tourism Inbound', 'Tourism Outbound']
     data_for_outlier = data.drop(columns=key_cols)
     data_for_outlier = data_for_outlier.select_dtypes(include=[np.number])
@@ -67,20 +67,20 @@ if uploaded_file:
     data_cleaned.reset_index(drop=True, inplace=True)
     data_cleaned['Country'] = country_cleaned
 
-    # Re-impute zeros in key indicators
+    # Re-impute zeros in key indicators only if necessary
     st.subheader("🔄 Re-imputing zeros in key indicators")
-    fallbacks = {'GDP': 1000, 'Health Exp/Capita': 50, 'Tourism Inbound': 100, 'Tourism Outbound': 100}
     for col in key_cols:
         if col in data_cleaned.columns:
-            data_cleaned[col] = data_cleaned[col].replace(0, np.nan)
-            non_zero = data_cleaned[col].dropna()
-            if len(non_zero) > 0:
-                median_val = non_zero.median()
-            else:
-                median_val = fallbacks.get(col, 0)
-                st.warning(f"⚠️ No valid data in '{col}'. Using fallback: {median_val}")
-            data_cleaned[col] = data_cleaned[col].fillna(median_val)
-            st.write(f"Filled NaNs in '{col}' with: {median_val}")
+            zero_count = (data_cleaned[col] == 0).sum()
+            if zero_count > 0:
+                data_cleaned[col] = data_cleaned[col].replace(0, np.nan)
+                non_zero = data_cleaned[col].dropna()
+                if len(non_zero) > 0:
+                    median_val = non_zero.median()
+                    data_cleaned[col] = data_cleaned[col].fillna(median_val)
+                    st.write(f"Replaced zeros in '{col}' with median: {median_val}")
+                else:
+                    st.warning(f"⚠️ No valid data in '{col}'. Leaving zeros as-is.")
 
     # Final cleanup before clustering
     numeric_data = data_cleaned.select_dtypes(include=[np.number])
@@ -90,12 +90,9 @@ if uploaded_file:
             median_val = numeric_data[col].median()
             numeric_data[col] = numeric_data[col].fillna(median_val)
 
-    # Standardize and apply PCA
+    # Standardize features
     scaler = StandardScaler()
     scaled = scaler.fit_transform(numeric_data)
-    pca = PCA()
-    data_pca = pca.fit_transform(scaled)
-    data_pca_15 = data_pca[:, :15]
 
     # Sidebar clustering settings
     st.sidebar.header("🔧 Clustering Settings")
@@ -104,51 +101,40 @@ if uploaded_file:
     eps = st.sidebar.slider("DBSCAN eps", 0.1, 1.0, 0.5)
     min_samples = st.sidebar.slider("DBSCAN min_samples", 3, 10, 5)
 
-    # Clustering
+    # Apply clustering
     if cluster_method == "K-Means":
         model = KMeans(n_clusters=n_clusters, random_state=42)
-        labels = model.fit_predict(data_pca_15)
+        labels = model.fit_predict(scaled)
     elif cluster_method == "Hierarchical":
         model = AgglomerativeClustering(n_clusters=n_clusters, linkage='ward')
-        labels = model.fit_predict(data_pca_15)
+        labels = model.fit_predict(scaled)
     else:
         model = DBSCAN(eps=eps, min_samples=min_samples)
-        labels = model.fit_predict(data_pca_15)
+        labels = model.fit_predict(scaled)
 
     data_cleaned['Cluster'] = labels
 
     # Silhouette Score
-    if len(set(labels)) > 1:
-        score = silhouette_score(data_pca_15, labels)
+    if len(set(labels)) > 1 and -1 not in set(labels):
+        score = silhouette_score(scaled, labels)
         st.metric("Silhouette Score", f"{score:.3f}")
     else:
-        st.warning("DBSCAN detected only one cluster or noise. Silhouette Score not available.")
-
-    # PCA Visualization
-    st.subheader("📉 PCA Cluster Visualization")
-    fig, ax = plt.subplots()
-    sns.scatterplot(x=data_pca_15[:, 0], y=data_pca_15[:, 1], hue=labels, palette='Set2', s=100, ax=ax)
-    ax.set_xlabel("PCA Component 1")
-    ax.set_ylabel("PCA Component 2")
-    ax.set_title("Clusters in PCA Space")
-    st.pyplot(fig)
+        st.warning("Clustering did not produce distinct groups. Try adjusting parameters.")
 
     # t-SNE Visualization
     st.subheader("🌐 t-SNE Cluster Visualization")
     tsne = TSNE(random_state=42)
-    tsne_input = numeric_data.copy()
-    tsne_input.drop(columns=['Cluster'], errors='ignore', inplace=True)
-    data_tsne = tsne.fit_transform(tsne_input)
+    data_tsne = tsne.fit_transform(scaled)
     fig2, ax2 = plt.subplots()
     sns.scatterplot(x=data_tsne[:, 0], y=data_tsne[:, 1], hue=labels, palette='Set1', s=100, ax=ax2)
     ax2.set_title("Clusters in t-SNE Space")
     st.pyplot(fig2)
 
-    # Dendrogram
+    # Dendrogram (only for Hierarchical)
     if cluster_method == "Hierarchical":
         st.subheader("🌲 Dendrogram")
         fig3, ax3 = plt.subplots(figsize=(10, 5))
-        sch.dendrogram(sch.linkage(data_pca_15, method='ward'), ax=ax3)
+        sch.dendrogram(sch.linkage(scaled, method='ward'), ax=ax3)
         st.pyplot(fig3)
 
     # Cluster Summary
