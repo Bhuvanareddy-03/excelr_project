@@ -90,11 +90,19 @@ if uploaded_file:
     st.subheader("🧼 Final Cleanup Before PCA")
     data_cleaned_numeric = data_cleaned.select_dtypes(include=[np.number])
     data_cleaned_numeric.replace([np.inf, -np.inf], np.nan, inplace=True)
+
     for col in data_cleaned_numeric.columns:
         if data_cleaned_numeric[col].isnull().sum() > 0:
-            data_cleaned_numeric[col] = data_cleaned_numeric[col].fillna(data_cleaned_numeric[col].median())
-            st.write(f"Filled remaining NaNs in '{col}' with median.")
-    st.write("✅ Remaining missing values before PCA:", data_cleaned_numeric.isnull().sum().sum())
+            median_val = data_cleaned_numeric[col].median()
+            data_cleaned_numeric[col] = data_cleaned_numeric[col].fillna(median_val)
+            st.write(f"Filled NaNs in '{col}' with median: {median_val}")
+
+    total_missing = data_cleaned_numeric.isnull().sum().sum()
+    st.write("✅ Remaining missing values before PCA:", total_missing)
+
+    if total_missing > 0:
+        st.error("❌ PCA cannot proceed. Missing values still present.")
+        st.stop()
 
     # Standardize and apply PCA
     scaler = StandardScaler()
@@ -166,4 +174,3 @@ if uploaded_file:
     # Clustered Countries
     st.subheader("🌍 Countries by Cluster")
     st.dataframe(data_cleaned[['Country', 'Cluster']].sort_values(by='Cluster'))
-
