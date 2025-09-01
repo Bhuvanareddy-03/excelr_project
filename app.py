@@ -71,14 +71,17 @@ if uploaded_file:
     data_cleaned = data[~((data < (Q1 - 1.5 * IQR)) | (data > (Q3 + 1.5 * IQR))).any(axis=1)]
 
     # Re-impute zeros in key economic indicators
+    st.subheader("🔄 Re-imputing zeros in key indicators")
     for col in ['GDP', 'Health Exp/Capita', 'Tourism Inbound', 'Tourism Outbound']:
         if col in data_cleaned.columns:
             non_zero = data_cleaned[col][data_cleaned[col] != 0]
             if len(non_zero) > 0:
                 if abs(non_zero.skew()) < 1:
                     data_cleaned[col] = data_cleaned[col].replace(0, np.nan).fillna(non_zero.mean())
+                    st.write(f"Replaced zeros in '{col}' with mean.")
                 else:
                     data_cleaned[col] = data_cleaned[col].replace(0, np.nan).fillna(non_zero.median())
+                    st.write(f"Replaced zeros in '{col}' with median.")
 
     # Standardize and apply PCA
     scaler = StandardScaler()
