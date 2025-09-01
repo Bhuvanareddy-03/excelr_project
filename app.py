@@ -79,12 +79,12 @@ if uploaded_file:
             data_cleaned[col] = data_cleaned[col].replace(0, np.nan)
             non_zero = data_cleaned[col].dropna()
             if len(non_zero) > 0:
-                if abs(non_zero.skew()) < 1:
-                    data_cleaned[col] = data_cleaned[col].fillna(non_zero.mean())
-                    st.write(f"Replaced zeros in '{col}' with mean.")
-                else:
-                    data_cleaned[col] = data_cleaned[col].fillna(non_zero.median())
-                    st.write(f"Replaced zeros in '{col}' with median.")
+                median_val = non_zero.median()
+                if pd.isna(median_val):
+                    st.warning(f"⚠️ Median for '{col}' is NaN. Using fallback value 0.")
+                    median_val = 0
+                data_cleaned[col] = data_cleaned[col].fillna(median_val)
+                st.write(f"Replaced zeros in '{col}' with median: {median_val}")
 
     # Final cleanup before PCA
     st.subheader("🧼 Final Cleanup Before PCA")
@@ -94,8 +94,11 @@ if uploaded_file:
     for col in data_cleaned_numeric.columns:
         if data_cleaned_numeric[col].isnull().sum() > 0:
             median_val = data_cleaned_numeric[col].median()
+            if pd.isna(median_val):
+                st.warning(f"⚠️ Median for '{col}' is NaN. Using fallback value 0.")
+                median_val = 0
             data_cleaned_numeric[col] = data_cleaned_numeric[col].fillna(median_val)
-            st.write(f"Filled NaNs in '{col}' with median: {median_val}")
+            st.write(f"Filled NaNs in '{col}' with: {median_val}")
 
     total_missing = data_cleaned_numeric.isnull().sum().sum()
     st.write("✅ Remaining missing values before PCA:", total_missing)
