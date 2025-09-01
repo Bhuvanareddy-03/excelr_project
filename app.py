@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
 from sklearn.metrics import silhouette_score
@@ -15,16 +15,13 @@ st.title("🌍 Country Clustering Based on Development Indicators")
 
 uploaded_file = st.file_uploader("Upload your Excel dataset", type=["xlsx"])
 if uploaded_file:
+    # Load and preserve original country names
     data_org = pd.read_excel(uploaded_file)
     data = data_org.copy()
-    country_names = data['Country']
+    country_names = data_org['Country']
 
     st.subheader("📊 Raw Data Preview")
     st.dataframe(data.head())
-
-    # Encode country
-    data['Country_encoded'] = LabelEncoder().fit_transform(data['Country'])
-    data.drop(['Country'], axis=1, inplace=True)
 
     # Clean currency and percentage columns
     def clean_currency(col):
@@ -55,7 +52,6 @@ if uploaded_file:
 
     data.replace([np.inf, -np.inf], np.nan, inplace=True)
     data.fillna(0, inplace=True)
-    st.write(f"✅ Remaining missing values: {data.isnull().sum().sum()}")
 
     # Outlier removal (preserve key indicators)
     key_cols = ['GDP', 'Health Exp/Capita', 'Tourism Inbound', 'Tourism Outbound']
@@ -63,12 +59,11 @@ if uploaded_file:
     Q1 = data_for_outlier.quantile(0.25)
     Q3 = data_for_outlier.quantile(0.75)
     IQR = Q3 - Q1
-    mask = ~((data_for_outlier < (Q1 - 1.5 * IQR)) | (data_for_outlier > (Q3 + 1.5 * IQR))).any(axis=1)
+    mask = ~((data_for_outlier < (Q1 - 3.0 * IQR)) | (data_for_outlier > (Q3 + 3.0 * IQR))).any(axis=1)
 
     data_cleaned = data.loc[mask].copy()
-    country_cleaned = country_names.loc[mask].copy()
+    country_cleaned = country_names.loc[mask].reset_index(drop=True)
     data_cleaned.reset_index(drop=True, inplace=True)
-    country_cleaned.reset_index(drop=True, inplace=True)
     data_cleaned['Country'] = country_cleaned
 
     # Re-impute zeros in key indicators
@@ -86,28 +81,17 @@ if uploaded_file:
             data_cleaned[col] = data_cleaned[col].fillna(median_val)
             st.write(f"Filled NaNs in '{col}' with: {median_val}")
 
-    # Final cleanup before PCA
-    st.subheader("🧼 Final Cleanup Before PCA")
-    data_cleaned_numeric = data_cleaned.select_dtypes(include=[np.number])
-    data_cleaned_numeric.replace([np.inf, -np.inf], np.nan, inplace=True)
-    for col in data_cleaned_numeric.columns:
-        if data_cleaned_numeric[col].isnull().sum() > 0:
-            median_val = data_cleaned_numeric[col].median()
-            if pd.isna(median_val):
-                st.warning(f"⚠️ Median for '{col}' is NaN. Using fallback value 0.")
-                median_val = 0
-            data_cleaned_numeric[col] = data_cleaned_numeric[col].fillna(median_val)
-            st.write(f"Filled NaNs in '{col}' with: {median_val}")
+    # Final cleanup before clustering
+    numeric_data = data_cleaned.select_dtypes(include=[np.number])
+    numeric_data.replace([np.inf, -np.inf], np.nan, inplace=True)
+    for col in numeric_data.columns:
+        if numeric_data[col].isnull().sum() > 0:
+            median_val = numeric_data[col].median()
+            numeric_data[col] = numeric_data[col].fillna(median_val)
 
-    total_missing = data_cleaned_numeric.isnull().sum().sum()
-    st.write("✅ Remaining missing values before PCA:", total_missing)
-    if total_missing > 0:
-        st.error("❌ PCA cannot proceed. Missing values still present.")
-        st.stop()
-
-    # PCA
+    # Standardize and apply PCA
     scaler = StandardScaler()
-    scaled = scaler.fit_transform(data_cleaned_numeric)
+    scaled = scaler.fit_transform(numeric_data)
     pca = PCA()
     data_pca = pca.fit_transform(scaled)
     data_pca_15 = data_pca[:, :15]
@@ -151,7 +135,7 @@ if uploaded_file:
     # t-SNE Visualization
     st.subheader("🌐 t-SNE Cluster Visualization")
     tsne = TSNE(random_state=42)
-    tsne_input = data_cleaned_numeric.copy()
+    tsne_input = numeric_data.copy()
     tsne_input.drop(columns=['Cluster'], errors='ignore', inplace=True)
     data_tsne = tsne.fit_transform(tsne_input)
     fig2, ax2 = plt.subplots()
