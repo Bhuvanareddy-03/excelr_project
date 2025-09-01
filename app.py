@@ -61,6 +61,7 @@ if uploaded_file:
                 st.write(f"Filled missing values in '{col}' with placeholder.")
 
     # Final sweep to ensure no NaNs remain
+    data.replace([np.inf, -np.inf], np.nan, inplace=True)
     data.fillna(0, inplace=True)
     st.write(f"✅ Remaining missing values: {data.isnull().sum().sum()}")
 
@@ -85,9 +86,11 @@ if uploaded_file:
                     data_cleaned[col] = data_cleaned[col].fillna(non_zero.median())
                     st.write(f"Replaced zeros in '{col}' with median.")
 
-    # Diagnostic check
-    st.subheader("🔍 Post-Imputation Check")
-    st.dataframe(data_cleaned[key_cols].describe())
+    # Final cleanup before PCA
+    st.subheader("🧼 Final Cleanup Before PCA")
+    data_cleaned.replace([np.inf, -np.inf], np.nan, inplace=True)
+    data_cleaned.fillna(0, inplace=True)
+    st.write("Remaining missing values before PCA:", data_cleaned.isnull().sum().sum())
 
     # Standardize and apply PCA
     scaler = StandardScaler()
