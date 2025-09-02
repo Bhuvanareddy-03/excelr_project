@@ -10,8 +10,8 @@ import pandas as pd
 
 
 # Load Train Kmeans Model
-kmeans = pickle.load(open("/Users/sakethreddy/Downloads/kmeans.pkl",'rb'))
-df = pd.read_csv("/Users/sakethreddy/Downloads/World_development_mesurement.csv")
+kmeans = pickle.load(open("kmeans.pkl",'rb'))
+df = pd.read_excel("World_development_mesurement.xlsx")
 
 # Simple clustering function
 def clustering(GDP, emission, iu, eu):
