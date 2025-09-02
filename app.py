@@ -9,65 +9,57 @@ from sklearn.metrics import silhouette_score
 from sklearn.manifold import TSNE
 import scipy.cluster.hierarchy as sch
 
-# ------------------ CONFIG ------------------
 st.set_page_config(page_title="Country Clustering", layout="wide")
 st.title("🌍 Country Clustering Based on Development Indicators")
 
-# ------------------ FILE UPLOAD ------------------
-uploaded_file = st.file_uploader('World_development_mesurement.xlsx', type=["xlsx"])
+uploaded_file = st.file_uploader("World_development_mesurement", type=["xlsx"])
 if not uploaded_file:
     st.stop()
 
+# ------------------ Load and Clean ------------------
 df_raw = pd.read_excel(uploaded_file)
 df = df_raw.copy()
-st.subheader("📊 Raw Data Preview")
-st.dataframe(df.head())
+country_col = 'Country' if 'Country' in df.columns else df.columns[0]
+country_names = df[country_col]
+df.drop(columns=[country_col], inplace=True)
 
-# ------------------ PREPROCESSING ------------------
-def clean_and_impute(df):
-    df = df.copy()
-    if 'Country' in df.columns:
-        countries = df['Country']
-        df.drop(columns=['Country'], inplace=True)
-    else:
-        countries = pd.Series([f"Country_{i}" for i in range(len(df))])
+# Clean currency and percentage columns
+df = df.apply(lambda col: pd.to_numeric(col.astype(str)
+                                        .str.replace('$','',regex=True)
+                                        .str.replace('%','',regex=True)
+                                        .str.replace(',','',regex=True),
+                                        errors='coerce'))
 
-    # Clean currency and percentage columns
-    for col in df.columns:
-        df[col] = df[col].astype(str).str.replace('$','',regex=True).str.replace('%','',regex=True).str.replace(',','',regex=True)
-        df[col] = pd.to_numeric(df[col], errors='coerce')
+# Impute missing values
+df.fillna(df.median(), inplace=True)
 
-    # Impute missing values
-    for col in df.columns:
-        if df[col].isnull().sum() > 0:
-            df[col] = df[col].fillna(df[col].median())
+# Remove outliers (IQR)
+Q1 = df.quantile(0.25)
+Q3 = df.quantile(0.75)
+IQR = Q3 - Q1
+df = df[~((df < (Q1 - 1.5 * IQR)) | (df > (Q3 + 1.5 * IQR))).any(axis=1)]
+country_names = country_names.loc[df.index].reset_index(drop=True)
+df.reset_index(drop=True, inplace=True)
 
-    # Remove outliers (IQR)
-    Q1 = df.quantile(0.25)
-    Q3 = df.quantile(0.75)
-    IQR = Q3 - Q1
-    df = df[~((df < (Q1 - 1.5 * IQR)) | (df > (Q3 + 1.5 * IQR))).any(axis=1)]
+# Final cleanup
+df.replace([np.inf, -np.inf], np.nan, inplace=True)
+df.fillna(df.median(), inplace=True)
 
-    # Final cleanup
-    df.replace([np.inf, -np.inf], np.nan, inplace=True)
-    df.fillna(df.median(), inplace=True)
-
-    return df, countries.loc[df.index].reset_index(drop=True)
-
-df_clean, country_names = clean_and_impute(df)
-
-# ------------------ SCALING ------------------
+# ------------------ Scaling ------------------
 scaler = StandardScaler()
-X_scaled = scaler.fit_transform(df_clean)
+X_scaled = scaler.fit_transform(df)
 
-# ------------------ SIDEBAR SETTINGS ------------------
+# Final check
+X_scaled = np.nan_to_num(X_scaled)
+
+# ------------------ Sidebar Settings ------------------
 st.sidebar.header("🔧 Clustering Settings")
 method = st.sidebar.selectbox("Method", ["K-Means", "Hierarchical", "DBSCAN"])
 n_clusters = st.sidebar.slider("Number of clusters", 2, 10, 3)
 eps = st.sidebar.slider("DBSCAN eps", 0.1, 1.0, 0.5)
 min_samples = st.sidebar.slider("DBSCAN min_samples", 3, 10, 5)
 
-# ------------------ CLUSTERING ------------------
+# ------------------ Clustering ------------------
 if method == "K-Means":
     model = KMeans(n_clusters=n_clusters, random_state=42)
     labels = model.fit_predict(X_scaled)
@@ -78,16 +70,16 @@ else:
     model = DBSCAN(eps=eps, min_samples=min_samples)
     labels = model.fit_predict(X_scaled)
 
-df_clean['Cluster'] = labels
-df_clean['Country'] = country_names
+df['Cluster'] = labels
+df['Country'] = country_names
 
-# ------------------ METRICS ------------------
-valid_clusters = [label for label in set(labels) if label != -1]
+# ------------------ Metrics ------------------
+valid_clusters = sorted(label for label in set(labels) if label >= 0)
 if len(valid_clusters) > 1:
     score = silhouette_score(X_scaled, labels)
     st.metric("Silhouette Score", f"{score:.3f}")
 
-# ------------------ VISUALIZATION ------------------
+# ------------------ Visualization ------------------
 st.subheader("📉 t-SNE Cluster Visualization")
 tsne = TSNE(random_state=42)
 X_tsne = tsne.fit_transform(X_scaled)
@@ -102,12 +94,11 @@ if method == "Hierarchical":
     sch.dendrogram(sch.linkage(X_scaled, method='ward'), ax=ax2)
     st.pyplot(fig2)
 
-# ------------------ OUTPUT ------------------
+# ------------------ Output ------------------
 st.subheader("📋 Cluster Summary")
-summary = df_clean.groupby('Cluster').mean().round(2)
+summary = df[df['Cluster'] >= 0].groupby('Cluster').mean().round(2)
 st.dataframe(summary)
 
 st.subheader("🌍 Countries by Cluster")
-country_cluster = df_clean[['Country', 'Cluster']].sort_values(by='Cluster')
-country_cluster = country_cluster[country_cluster['Cluster'] >= 0]
+country_cluster = df[df['Cluster'] >= 0][['Country', 'Cluster']].sort_values(by='Cluster')
 st.dataframe(country_cluster)
