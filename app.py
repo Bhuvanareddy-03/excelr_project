@@ -37,14 +37,10 @@ def clean_column(col):
 df = df.apply(clean_column)
 df.fillna(df.median(), inplace=True)
 
-# ------------------ OUTLIER REMOVAL ------------------
-Q1 = df.quantile(0.25)
-Q3 = df.quantile(0.75)
-IQR = Q3 - Q1
-mask = ~((df < (Q1 - 3.0 * IQR)) | (df > (Q3 + 3.0 * IQR))).any(axis=1)
-df = df[mask]
-country_names = country_names.loc[df.index].reset_index(drop=True)
-df.reset_index(drop=True, inplace=True)
+# ------------------ DIAGNOSTIC: FEATURE VARIANCE ------------------
+st.subheader("📊 Feature Variance Check")
+variance = pd.DataFrame(df).var(axis=0)
+st.write("Feature variances:", variance.round(4).tolist())
 
 # ------------------ FINAL CLEANUP ------------------
 df.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -74,13 +70,15 @@ else:
     labels = model.fit_predict(X_scaled)
 
 df['Cluster'] = labels
-df['Country'] = country_names
+df['Country'] = country_names.reset_index(drop=True)
 
 # ------------------ METRICS ------------------
 valid_labels = sorted(label for label in set(labels) if label >= 0)
 if len(valid_labels) > 1:
     score = silhouette_score(X_scaled, labels)
     st.metric("Silhouette Score", f"{score:.3f}")
+else:
+    st.warning("Clustering did not produce distinct groups. Try adjusting parameters.")
 
 # ------------------ VISUALIZATION ------------------
 st.subheader("📉 t-SNE Cluster Visualization")
