@@ -1,6 +1,8 @@
-scikit-learn
-pandas
-matplotlib
-streamlit
-openpyxl
-seaborn
+streamlit 
+pandas 
+matplotlib 
+seaborn 
+scikit-learn 
+plotly 
+openpyxl 
+xlsxwriter
