@@ -67,10 +67,19 @@ else:
     st.warning("Only one cluster detected. Try increasing variation or adjusting parameters.")
 
 # ------------------ CLUSTER SUMMARY ------------------
+# ------------------ CLUSTER SUMMARY ------------------
 st.subheader("📋 Cluster Summary")
+
+# Select numeric columns only
 numeric_cols = df.select_dtypes(include='number').columns.drop('Cluster')
-summary = df.groupby('Cluster')[numeric_cols].mean().round(2)
+
+# Filter out columns with NaNs in grouped means
+summary_raw = df.groupby('Cluster')[numeric_cols].mean()
+valid_cols = summary_raw.columns[~summary_raw.isnull().any()]
+summary = summary_raw[valid_cols].round(2)
+
 st.dataframe(summary)
+
 
 # ------------------ COUNTRIES BY CLUSTER ------------------
 st.subheader("🌍 Countries by Cluster")
