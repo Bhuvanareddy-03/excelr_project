@@ -38,16 +38,13 @@ if uploaded_file:
         data.drop(['Number of Records'], axis=1, inplace=True)
 
     # Impute missing values
-    st.subheader("🧹 Handling Missing Values")
     for col in data.columns:
         if data[col].isnull().sum() > 0:
             skew = data[col].skew()
             if abs(skew) < 1:
                 data[col] = data[col].fillna(data[col].mean())
-                st.write(f"Filled missing values in '{col}' with mean.")
             else:
                 data[col] = data[col].fillna(data[col].median())
-                st.write(f"Filled missing values in '{col}' with median.")
 
     data.replace([np.inf, -np.inf], np.nan, inplace=True)
     data.fillna(0, inplace=True)
@@ -68,19 +65,14 @@ if uploaded_file:
     data_cleaned['Country'] = country_cleaned
 
     # Re-impute zeros in key indicators with fallback only if column is empty
-    st.subheader("🔄 Re-imputing zeros in key indicators")
     fallbacks = {'GDP': 1000, 'Health Exp/Capita': 50, 'Tourism Inbound': 100, 'Tourism Outbound': 100}
     for col in key_cols:
         if col in data_cleaned.columns:
             data_cleaned[col] = data_cleaned[col].replace(0, np.nan)
             if data_cleaned[col].isnull().all():
-                fallback = fallbacks[col]
-                data_cleaned[col] = data_cleaned[col].fillna(fallback)
-                st.warning(f"⚠️ No valid data in '{col}'. Using fallback: {fallback}")
+                data_cleaned[col] = data_cleaned[col].fillna(fallbacks[col])
             else:
-                median_val = data_cleaned[col].median()
-                data_cleaned[col] = data_cleaned[col].fillna(median_val)
-                st.write(f"Filled NaNs in '{col}' with median: {median_val}")
+                data_cleaned[col] = data_cleaned[col].fillna(data_cleaned[col].median())
 
     # Final cleanup before clustering
     numeric_data = data_cleaned.select_dtypes(include=[np.number])
@@ -88,9 +80,6 @@ if uploaded_file:
     for col in numeric_data.columns:
         if numeric_data[col].isnull().sum() > 0:
             median_val = numeric_data[col].median()
-            if pd.isna(median_val):
-                st.warning(f"⚠️ Column '{col}' has no valid values. Filling with 0.")
-                median_val = 0
             numeric_data[col] = numeric_data[col].fillna(median_val)
 
     # Standardize features
@@ -100,10 +89,7 @@ if uploaded_file:
     # Final check before clustering
     scaled_df = pd.DataFrame(scaled)
     scaled_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-    if scaled_df.isnull().sum().sum() > 0:
-        st.error("❌ Clustering cannot proceed. Missing or infinite values detected in scaled data.")
-        st.write("🔍 Columns with NaNs:", scaled_df.columns[scaled_df.isnull().any()].tolist())
-        st.stop()
+    scaled_df.fillna(0, inplace=True)
     scaled = scaled_df.values
 
     # Sidebar clustering settings
@@ -130,8 +116,6 @@ if uploaded_file:
     if len(set(labels)) > 1 and -1 not in set(labels):
         score = silhouette_score(scaled, labels)
         st.metric("Silhouette Score", f"{score:.3f}")
-    else:
-        st.warning("Clustering did not produce distinct groups. Try adjusting parameters.")
 
     # t-SNE Visualization
     st.subheader("🌐 t-SNE Cluster Visualization")
@@ -157,4 +141,5 @@ if uploaded_file:
     # Countries by Cluster
     st.subheader("🌍 Countries by Cluster")
     country_cluster_df = data_cleaned[['Country', 'Cluster']].sort_values(by='Cluster')
+    country_cluster_df = country_cluster_df[country_cluster_df['Cluster'] >= 0]
     st.dataframe(country_cluster_df)
