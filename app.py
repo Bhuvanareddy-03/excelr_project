@@ -41,7 +41,7 @@ df.fillna(df.median(), inplace=True)
 Q1 = df.quantile(0.25)
 Q3 = df.quantile(0.75)
 IQR = Q3 - Q1
-mask = ~((df < (Q1 - 1.5 * IQR)) | (df > (Q3 + 1.5 * IQR))).any(axis=1)
+mask = ~((df < (Q1 - 3.0 * IQR)) | (df > (Q3 + 3.0 * IQR))).any(axis=1)
 df = df[mask]
 country_names = country_names.loc[df.index].reset_index(drop=True)
 df.reset_index(drop=True, inplace=True)
