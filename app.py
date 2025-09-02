@@ -52,35 +52,35 @@ if uploaded_file:
     data.replace([np.inf, -np.inf], np.nan, inplace=True)
     data.fillna(0, inplace=True)
 
-    # Outlier removal (exclude key indicators)
+    # Preserve key indicators during outlier removal
     key_cols = ['GDP', 'Health Exp/Capita', 'Tourism Inbound', 'Tourism Outbound']
-    data_for_outlier = data.drop(columns=key_cols)
-    data_for_outlier = data_for_outlier.select_dtypes(include=[np.number])
+    data_numeric = data.select_dtypes(include=[np.number])
+    non_key = data_numeric.drop(columns=[col for col in key_cols if col in data_numeric.columns])
 
-    Q1 = data_for_outlier.quantile(0.25)
-    Q3 = data_for_outlier.quantile(0.75)
+    Q1 = non_key.quantile(0.25)
+    Q3 = non_key.quantile(0.75)
     IQR = Q3 - Q1
-    mask = ~((data_for_outlier < (Q1 - 1.5 * IQR)) | (data_for_outlier > (Q3 + 1.5 * IQR))).any(axis=1)
+    mask = ~((non_key < (Q1 - 1.5 * IQR)) | (non_key > (Q3 + 1.5 * IQR))).any(axis=1)
 
     data_cleaned = data.loc[mask].copy()
     country_cleaned = country_names.loc[mask].reset_index(drop=True)
     data_cleaned.reset_index(drop=True, inplace=True)
     data_cleaned['Country'] = country_cleaned
 
-    # Re-impute zeros in key indicators only if necessary
+    # Re-impute zeros in key indicators with fallback only if column is empty
     st.subheader("🔄 Re-imputing zeros in key indicators")
+    fallbacks = {'GDP': 1000, 'Health Exp/Capita': 50, 'Tourism Inbound': 100, 'Tourism Outbound': 100}
     for col in key_cols:
         if col in data_cleaned.columns:
-            zero_count = (data_cleaned[col] == 0).sum()
-            if zero_count > 0:
-                data_cleaned[col] = data_cleaned[col].replace(0, np.nan)
-                non_zero = data_cleaned[col].dropna()
-                if len(non_zero) > 0:
-                    median_val = non_zero.median()
-                    data_cleaned[col] = data_cleaned[col].fillna(median_val)
-                    st.write(f"Replaced zeros in '{col}' with median: {median_val}")
-                else:
-                    st.warning(f"⚠️ No valid data in '{col}'. Leaving zeros as-is.")
+            data_cleaned[col] = data_cleaned[col].replace(0, np.nan)
+            if data_cleaned[col].isnull().all():
+                fallback = fallbacks[col]
+                data_cleaned[col] = data_cleaned[col].fillna(fallback)
+                st.warning(f"⚠️ No valid data in '{col}'. Using fallback: {fallback}")
+            else:
+                median_val = data_cleaned[col].median()
+                data_cleaned[col] = data_cleaned[col].fillna(median_val)
+                st.write(f"Filled NaNs in '{col}' with median: {median_val}")
 
     # Final cleanup before clustering
     numeric_data = data_cleaned.select_dtypes(include=[np.number])
