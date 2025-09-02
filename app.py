@@ -1,94 +1,110 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
+from sklearn.metrics import silhouette_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+import plotly.express as px
+from io import BytesIO
 
-# ------------------ CONFIG ------------------
-st.set_page_config(page_title="Country Clustering", layout="wide")
+st.set_page_config(layout="wide")
 st.title("🌍 Country Clustering Based on Development Indicators")
 
-# ------------------ FILE UPLOAD ------------------
-uploaded_file = st.file_uploader("Upload your Excel dataset", type=["xlsx"])
-if not uploaded_file:
-    st.stop()
+# File uploader (now accepts Excel)
+uploaded_file = st.file_uploader("Upload preprocessed Excel file", type=["xlsx"])
 
-# ------------------ LOAD AND CLEAN ------------------
-df_raw = pd.read_excel(uploaded_file)
-df = df_raw.copy()
+if uploaded_file:
+    # Load Excel
+    data = pd.read_excel(uploaded_file)
 
-# Identify country column
-country_col = 'Country' if 'Country' in df.columns else df.columns[0]
-country_names = df[country_col]
-df.drop(columns=[country_col], inplace=True)
+    st.subheader("Preview of Uploaded Data")
+    st.write(data.head())
 
-# Clean and convert columns
-def clean_column(col):
-    return pd.to_numeric(col.astype(str)
-                         .str.replace('$','',regex=True)
-                         .str.replace('%','',regex=True)
-                         .str.replace(',','',regex=True),
-                         errors='coerce')
+    # Sidebar parameters
+    st.sidebar.header("Clustering Settings")
+    method = st.sidebar.selectbox("Select Clustering Algorithm", ["K-Means", "Hierarchical", "DBSCAN"])
+    reduction = st.sidebar.selectbox("Dimensionality Reduction", ["PCA", "t-SNE"])
+    
+    if method in ["K-Means", "Hierarchical"]:
+        n_clusters = st.sidebar.slider("Number of Clusters", 2, 10, 3)
+    elif method == "DBSCAN":
+        eps = st.sidebar.slider("DBSCAN: Epsilon", 0.1, 2.0, 0.5, 0.1)
+        min_samples = st.sidebar.slider("DBSCAN: Min Samples", 2, 10, 5)
 
-df = df.apply(clean_column)
+    # Drop non-numeric columns
+    numeric_data = data.select_dtypes(include=[np.number])
+    
+    # Scale features
+    scaler = StandardScaler()
+    scaled = scaler.fit_transform(numeric_data)
 
-# Impute missing values
-df.fillna(df.median(), inplace=True)
-df.replace([np.inf, -np.inf], np.nan, inplace=True)
-df.fillna(df.median(), inplace=True)
+    # Dimensionality reduction
+    if reduction == "PCA":
+        pca = PCA(n_components=2)
+        reduced = pca.fit_transform(scaled)
+        st.subheader("📉 PCA Explained Variance")
+        st.write(f"Component 1: {pca.explained_variance_ratio_[0]:.2f}, Component 2: {pca.explained_variance_ratio_[1]:.2f}")
+    else:
+        tsne = TSNE(n_components=2, random_state=42)
+        reduced = tsne.fit_transform(scaled)
 
-# ------------------ SCALING ------------------
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(df)
+    # Clustering
+    if method == "K-Means":
+        model = KMeans(n_clusters=n_clusters, random_state=42)
+        labels = model.fit_predict(reduced)
+    elif method == "Hierarchical":
+        model = AgglomerativeClustering(n_clusters=n_clusters)
+        labels = model.fit_predict(reduced)
+    elif method == "DBSCAN":
+        model = DBSCAN(eps=eps, min_samples=min_samples)
+        labels = model.fit_predict(reduced)
 
-# Final cleanup before clustering
-X_scaled = np.nan_to_num(X_scaled)
+    # Silhouette score
+    if len(set(labels)) > 1 and -1 not in labels:
+        score = silhouette_score(reduced, labels)
+        st.success(f"Silhouette Score: {score:.3f}")
+    elif len(set(labels)) > 1:
+        filtered = labels != -1
+        score = silhouette_score(reduced[filtered], np.array(labels)[filtered])
+        st.warning(f"Silhouette Score (excluding noise): {score:.3f}")
+    else:
+        score = None
+        st.error("Clustering resulted in only one cluster or all noise.")
 
-# ------------------ SIDEBAR SETTINGS ------------------
-st.sidebar.header("🔧 Clustering Settings")
-n_clusters = st.sidebar.slider("Number of clusters", 2, 10, 3)
+    # Add cluster labels
+    data['Cluster'] = labels
+    reduced_df = pd.DataFrame(reduced, columns=["Component 1", "Component 2"])
+    reduced_df["Cluster"] = labels.astype(str)
 
-# ------------------ CLUSTERING ------------------
-model = KMeans(n_clusters=n_clusters, random_state=42)
-labels = model.fit_predict(X_scaled)
+    # Visualization
+    fig = px.scatter(
+        reduced_df,
+        x="Component 1", y="Component 2",
+        color="Cluster",
+        title="Cluster Visualization",
+        template="plotly_white"
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-# ------------------ ASSIGN CLUSTERS ------------------
-df['Country'] = country_names.reset_index(drop=True)
-df['Cluster'] = labels
+    # Cluster distribution
+    st.subheader("📊 Cluster Distribution")
+    st.write(data['Cluster'].value_counts())
 
-# ------------------ METRICS ------------------
-if len(set(labels)) > 1:
-    score = silhouette_score(X_scaled, labels)
-    st.metric("Silhouette Score", f"{score:.3f}")
-else:
-    st.warning("Only one cluster detected. Try increasing variation or adjusting parameters.")
+    # Data preview
+    st.subheader("🧾 Data with Cluster Labels")
+    st.dataframe(data.head(20))
 
-# ------------------ CLUSTER SUMMARY ------------------
-# ------------------ CLUSTER SUMMARY ------------------
-st.subheader("📋 Cluster Summary")
-
-# Select numeric columns only
-numeric_cols = df.select_dtypes(include='number').columns.drop('Cluster')
-
-# Filter out columns with NaNs in grouped means
-summary_raw = df.groupby('Cluster')[numeric_cols].mean()
-valid_cols = summary_raw.columns[~summary_raw.isnull().any()]
-summary = summary_raw[valid_cols].round(2)
-
-st.dataframe(summary)
-
-
-# ------------------ COUNTRIES BY CLUSTER ------------------
-st.subheader("🌍 Countries by Cluster")
-country_cluster_df = df[['Country', 'Cluster']].sort_values(by='Cluster')
-st.dataframe(country_cluster_df)
-
-# ------------------ OPTIONAL: CLUSTER DISTRIBUTION ------------------
-st.subheader("📊 Cluster Distribution")
-fig, ax = plt.subplots()
-sns.countplot(x='Cluster', data=df, palette='Set2', ax=ax)
-ax.set_title("Number of Countries per Cluster")
-st.pyplot(fig)
+    # Download as Excel
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        data.to_excel(writer, index=False, sheet_name='Clustered Data')
+    st.download_button(
+        label="📥 Download Clustered Data (Excel)",
+        data=output.getvalue(),
+        file_name="clustered_data.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
